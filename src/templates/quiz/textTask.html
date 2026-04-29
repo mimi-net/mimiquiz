@@ -1,0 +1,185 @@
+<script src="{{ url_for('static', filename='/js/jquery-3.6.0.min.js') }}"></script>
+<script src="{{ url_for('static', filename='/js/jquery-ui.min.js') }}"></script>
+
+<section class="container"
+         style="display: flex;flex-direction: column; max-width: 1000px; margin-top: 48px; padding-top: 48px">
+    <div style="display: flex;flex-direction: row; padding: 0 24px 0 34px">
+        <div class="row align-items-baseline"
+             style=" flex: 5; display: flex;flex-direction: column;justify-content: space-evenly;">
+
+            {# Timer, questions counter #}
+            <div class="row align-items-baseline"
+                 style="margin: 8px 0 0 0; font-size: 24px; opacity: 85%; display: flex;">
+                <div class="col-auto">
+                    <p id="counter"></p>
+                </div>
+                {% if timer != 0 %}
+                    <div class="col-auto text-center">
+                        <span id="timer">00:00:00</span>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+
+        {# finishQuiz button #}
+        <div class="col-auto ms-auto"
+             style="flex: 1;display: flex;justify-content: flex-end;align-items: flex-end;margin: 8px 0 8px 0; font-size: 24px; opacity: 85%">
+            <button name="finishQuiz" aria-label="Завершить тест" class="btn btn-outline-danger btn-icon"
+                    data-toggle="tooltip" data-bs-placement="right" title="Завершить тест">
+                <i class="bx bx-x fs-4 mx-1"></i>
+            </button>
+        </div>
+    </div>
+
+
+    <article class="container card border-0 shadow-sm" style="padding: 12px 40px 12px 18px">
+        {#  Question text #}
+        <div class="card-body p-1 noselect" style="margin-right: 40px">
+            {% if question.images %}
+                <div class="question-images">
+                    {% for image in question.images %}
+                        <img src="{{ external_url_for('static', filename=image) }}" class="thumb-image" alt="Картинка вопроса"
+                            onclick="showImage('{{ external_url_for('static', filename=image) }}')">
+                    {% endfor %}
+                </div>
+
+                <div class="modal fade" id="imageModal" tabindex="-1" aria-labelledby="imageModalLabel" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-body text-center">
+                                <img id="modalImage" class="img-fluid" alt="Увеличенное изображение">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endif %}
+
+
+            <div class="text-black m-0 px-4 py-3" id="question_text"
+                 style="font-size: 24px">{{ question.question_text }}</div>
+
+            {# Divider #}
+            <div class="border border-1 border-success-subtle"></div>
+
+            {# Answer area #}
+            {% if question.question_type != "practice" %}
+                <div class="container m-3" id="variants"></div>
+            {% endif %}
+        </div>
+
+        {# Control buttons#}
+        <div class="card-body d-flex justify-content-left align-items-center pt-0 pb-1" style="margin-left: 12px">
+            {% if is_exam and not available_answer %}
+                {% if question.question_type == 'variable' %}
+                    <button name="answerExamQuestion" class="btn btn-primary" disabled>Ответить</button>
+                {% else %}
+                    <button name="answerExamQuestion" class="btn btn-primary">Ответить</button>
+                {% endif %}
+            {% else %}
+                {% if question.question_type == 'variable' %}
+                    <button name="answerQuestion" class="btn btn-primary" disabled>Ответить</button>
+                {% else %}
+                    <button name="answerQuestion" class="btn btn-primary">Ответить</button>
+                {% endif %}
+            {% endif %}
+            <button name="nextQuestion" class="btn" hidden></button>
+            <button name="seeResults" class="btn" hidden></button>
+
+            <span id="answerSavedBanner" class="ms-3 text-success" style="display: none; font-weight: bold;">
+                ✔ Ответ сохранён
+            </span>
+        </div>
+
+        <div class="container" id="explanation" hidden></div>
+    </article>
+</section>
+
+<style>
+        .question-images {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .thumb-image {
+            height: 200px;
+            width: auto; 
+            border-radius: 5px;
+            cursor: pointer;
+            transition: transform 0.2s;
+            object-fit: contain; 
+        }
+
+        .thumb-image:hover {
+            transform: scale(1.1);
+        }
+
+        .modal-dialog {
+            max-width: 100%; 
+            width: auto; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background-color: transparent;
+            border: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            max-width: fit-content;
+        }
+
+        .modal-body {
+            padding: 0;
+            display: flex;
+            justify-content: center;
+        }
+
+        #modalImage {
+            max-width: 100%; 
+            max-height: 90vh; 
+            border-radius: 8px;
+        }
+</style>
+
+<script src="/quiz/text_question_scripts.js"></script>
+<script>
+    const displayFunctions = {
+        'variable': displayVariable,
+        'matching': displayMatching,
+        'sorting': displaySorting
+    };
+    const answers = '{{ question.answers | tojson }}';
+    const correctCount = '{{ question.correct_count }}';
+    const textType = '{{ question.question_type }}';
+    displayFunctions[textType](JSON.parse(answers));
+
+    function showImage(src) {
+            document.getElementById('modalImage').src = src;
+            new bootstrap.Modal(document.getElementById('imageModal')).show();
+    }
+
+    // Enable answer button only when option is selected
+    document.addEventListener('DOMContentLoaded', function () {
+        let answerBtn = document.querySelector('button[name="answerQuestion"]');
+        let examBtn = document.querySelector('button[name="answerExamQuestion"]');
+
+        const variantsContainer = document.getElementById('variants');
+        if (variantsContainer) {
+            variantsContainer.addEventListener('change', function (e) {
+                const checked = variantsContainer.querySelectorAll('input.form-check-input:checked');
+                if (answerBtn) answerBtn.disabled = checked.length === 0;
+                if (examBtn) examBtn.disabled = checked.length === 0;
+            });
+        }
+
+        if (textType === 'matching' || textType === 'sorting') {
+            if (answerBtn) answerBtn.disabled = false;
+            if (examBtn) examBtn.disabled = false;
+        }
+    });
+</script>

@@ -1,0 +1,35 @@
+version: "3.9"
+
+services:
+  quiz:
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+    container_name: ${APP_NAME}
+    restart: always
+    networks:
+      miminet_network:
+        ipv4_address: 172.18.0.10
+      rabbitmq_network:
+    expose:
+      - 80
+    env_file:
+      - .env
+    environment:
+      - RABBITMQ_URL=amqp://rabbitmq:5672
+    volumes:
+      - ./src/static/images:/app/static/images
+      - ./src/static/svg:/app/static/svg
+      - ./src/static/avatar:/app/static/avatar
+      - ./src/static/video:/app/static/video
+      - ./src/static/pcaps:/app/static/pcaps
+      - ./src/static/assets:/app/static/assets
+      - ./src/static/quiz_images:/app/static/quiz_images
+
+networks:
+  miminet_network:
+    external: true
+    name: miminet_network
+  rabbitmq_network:
+    external: true
+    name: rabbitmq_network

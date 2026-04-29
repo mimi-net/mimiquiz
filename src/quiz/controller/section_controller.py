@@ -1,0 +1,149 @@
+import json
+from datetime import datetime
+
+from flask import abort, jsonify, make_response, render_template, request
+from flask_jwt_extended import get_jwt_identity, jwt_required
+
+from miminet_model import User
+from quiz.service.section_service import (
+    create_section,
+    delete_section,
+    edit_section,
+    get_deleted_sections_by_test,
+    get_section,
+    get_sections_by_test,
+    publish_or_unpublish_test_by_section,
+)
+from quiz.service.test_service import get_test
+from quiz.util.dto import get_organization
+from quiz.util.encoder import UUIDEncoder
+
+
+@jwt_required()
+def create_section_endpoint():
+    user_id = get_jwt_identity()
+    user = User.query.filter(User.id == user_id).first()
+    res = create_section(
+        name=request.json["name"],
+        description=request.json["description"],
+        user=user,
+        test_id=request.json["test_id"],
+        timer=datetime.strptime(request.json["timer"], "%H:%M:%S"),
+    )
+    if res[1] == 404 or res[1] == 403:
+        abort(res[1])
+
+    ret = {"message": "Раздел добавлен", "id": res[0]}
+
+    return make_response(jsonify(ret), res[1])
+
+
+@jwt_required()
+def get_section_endpoint():
+    res = get_section(request.args["id"])
+    if res[1] == 404:
+        abort(404)
+
+    return make_response(jsonify(res), res[0])
+
+
+@jwt_required()
+def get_sections_by_test_endpoint():
+    test_id = request.args["test_id"]
+    res = get_sections_by_test(test_id)
+    if res[1] == 404 or res[1] == 403:
+        abort(res[1])
+    else:
+        sections = res[0]
+        test = get_test(test_id)[0]
+        test_info = {"test_name": test.name, "is_retakeable": test.is_retakeable}
+        org = get_organization()
+        return make_response(
+            render_template(
+                "quiz/quiz.html",
+                test_info=test_info,
+                sections=sections,
+                organization_logo_uri=org.logo_uri,
+                organization_name=org.name,
+            ),
+            200,
+        )
+
+
+@jwt_required()
+def get_deleted_sections_by_test_endpoint():
+    user_id = get_jwt_identity()
+    user = User.query.filter(User.id == user_id).first()
+    res = get_deleted_sections_by_test(request.args["test_id"], user)
+    if res[1] == 404 or res[1] == 403:
+        abort(res[1])
+    else:
+        return make_response(
+            json.dumps([obj.__dict__ for obj in res[0]], cls=UUIDEncoder), res[1]
+        )
+
+
+@jwt_required()
+def delete_section_endpoint():
+    section_id = request.args["id"]
+    user_id = get_jwt_identity()
+    user = User.query.filter(User.id == user_id).first()
+    deleted = delete_section(user, section_id)
+    if deleted == 404:
+        ret = {"message": "Раздел не существует", "id": section_id}
+    elif deleted == 403:
+        ret = {"message": "Попытка удалить чужой раздел", "id": section_id}
+    else:
+        ret = {"message": "Раздел удалён", "id": section_id}
+
+    return make_response(jsonify(ret), deleted)
+
+
+@jwt_required()
+def edit_section_endpoint():
+    section_id = request.json["id"]
+    user_id = get_jwt_identity()
+    user = User.query.filter(User.id == user_id).first()
+    edited = edit_section(
+        user=user,
+        name=request.json["name"],
+        section_id=section_id,
+        description=request.json["description"],
+        timer=datetime.strptime(request.json["timer"], "%H:%M:%S"),
+    )
+    if edited == 404:
+        ret = {"message": "Раздел не существует", "id": section_id}
+    elif edited == 403:
+        ret = {"message": "Попытка редактировать чужой раздел", "id": section_id}
+    else:
+        ret = {"message": "Раздел редактирован", "id": section_id}
+
+    return make_response(jsonify(ret), edited)
+
+
+@jwt_required()
+def publish_or_unpublish_test_by_section_endpoint():
+    is_to_publish = request.json["to_publish"]
+    section_id = request.args["id"]
+    user_id = get_jwt_identity()
+    user = User.query.filter(User.id == user_id).first()
+    published = publish_or_unpublish_test_by_section(
+        user=user, section_id=section_id, is_to_publish=is_to_publish
+    )
+    if published == 404:
+        ret = {"message": "Тест по данной секции не существует", "id": section_id}
+    elif published == 403:
+        ret = {
+            "message": "Попытка опубликовать чужой тест по данной секции ",
+            "id": section_id,
+        }
+    else:
+        if is_to_publish:
+            ret = {"message": "Тест по данной секции опубликован", "id": section_id}
+        else:
+            ret = {
+                "message": "В данный момент тест по данной секции невозможно пройти",
+                "id": section_id,
+            }
+
+    return make_response(jsonify(ret), published)
